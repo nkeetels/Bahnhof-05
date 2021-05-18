@@ -1,7 +1,7 @@
 # Bahnhof-05
 Gameboy Advance demo source code for Bahnhof-05.
 
-Bahnhof-05 is based on the Secret Santa demo codebase and adds new features such as post-processing (bloom, color toning, scanline distortion, screen vignette), sprite based full-screen overlays, hackground scaling, as well as several performance enhancements and bugfixes.
+Bahnhof-05 is an upcoming Gameboy Advance demo for which I'm prototyping features such as post-processing (bloom, color toning, scanline distortion, screen vignette), sprite based full-screen overlays, hackground scaling, as well as several performance enhancements and bugfixes.
 
 # Icosahedron
 <img src="https://github.com/nkeetels/Bahnhof-05/blob/main/Screenshots/effect_icosahedron.png" width="30%" height="30%"></img>
