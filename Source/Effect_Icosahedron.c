@@ -29,10 +29,22 @@ const u8 ico_indices[] =
   0,4,1,0,9,4,9,5,4,4,5,8,4,8,1,8,10,1,8,3,10,5,3,8,5,2,3,2,7,3,7,10,3,7,6,10,7,11,6,11,0,6,0,1,6,6,1,10,9,0,11,9,11,2,9,2,5,7,2,11
 };
 
+void Icosahedron_CreateIndexBuffer(const int numFaces)
+{
+  currentModel.m_faces = &currentFaces[0];
+  for (int i = 0; i < numFaces - 1; i++)
+  {
+    currentFaces[i].m_next = &currentFaces[i+1];
+  }
+    
+  currentModel.m_faces[numFaces - 1].m_next = 0;
+}
+
 void Icosahedron_Generate(int time)
 {
   int index = 0;
   int i = 0;
+
   for (i = 0; i < 20; i++)
   {
     currentFaces[i].m_vertices[0].m_position.x = ico_verts[ico_indices[index + 0]].x;
@@ -47,6 +59,89 @@ void Icosahedron_Generate(int time)
 
     index += 3;
   }
+
+  Icosahedron_CreateIndexBuffer(20);
+}
+
+void Icosahedron_Subdivide(int time)
+{
+  int i = 0, j = 0, index = 0;
+  Vector3 edge1, edge2, edge3;
+
+  for (i = 0; i < 20; i++)
+  {
+    s16 t0x0 = ico_verts[ico_indices[index + 0]].x;
+    s16 t0y0 = ico_verts[ico_indices[index + 0]].y;
+    s16 t0z0 = ico_verts[ico_indices[index + 0]].z;
+
+    s16 t0x1 = ico_verts[ico_indices[index + 1]].x;
+    s16 t0y1 = ico_verts[ico_indices[index + 1]].y;
+    s16 t0z1 = ico_verts[ico_indices[index + 1]].z;
+
+    s16 t0x2 = ico_verts[ico_indices[index + 2]].x;
+    s16 t0y2 = ico_verts[ico_indices[index + 2]].y;
+    s16 t0z2 = ico_verts[ico_indices[index + 2]].z;
+  
+    edge1.x = t0x0 + ((t0x1 - t0x0) >> 1);
+    edge1.y = t0y0 + ((t0y1 - t0y0) >> 1);
+    edge1.z = t0z0 + ((t0z1 - t0z0) >> 1);
+
+    edge2.x = t0x1 + ((t0x2 - t0x1) >> 1);
+    edge2.y = t0y1 + ((t0y2 - t0y1) >> 1);
+    edge2.z = t0z1 + ((t0z2 - t0z1) >> 1);
+
+    edge3.x = t0x2 + ((t0x0 - t0x2) >> 1);
+    edge3.y = t0y2 + ((t0y0 - t0y2) >> 1);
+    edge3.z = t0z2 + ((t0z0 - t0z2) >> 1);
+
+    currentFaces[j].m_vertices[0].m_position.x = edge3.x;
+    currentFaces[j].m_vertices[0].m_position.y = edge3.y;
+    currentFaces[j].m_vertices[0].m_position.z = edge3.z;
+    currentFaces[j].m_vertices[1].m_position.x = t0x0;
+    currentFaces[j].m_vertices[1].m_position.y = t0y0;
+    currentFaces[j].m_vertices[1].m_position.z = t0z0;
+    currentFaces[j].m_vertices[2].m_position.x = edge1.x;
+    currentFaces[j].m_vertices[2].m_position.y = edge1.y;
+    currentFaces[j].m_vertices[2].m_position.z = edge1.z;
+    j++;
+
+    currentFaces[j].m_vertices[0].m_position.x = edge1.x;
+    currentFaces[j].m_vertices[0].m_position.y = edge1.y;
+    currentFaces[j].m_vertices[0].m_position.z = edge1.z;
+    currentFaces[j].m_vertices[1].m_position.x = t0x1;
+    currentFaces[j].m_vertices[1].m_position.y = t0y1;
+    currentFaces[j].m_vertices[1].m_position.z = t0z1;
+    currentFaces[j].m_vertices[2].m_position.x = edge2.x;
+    currentFaces[j].m_vertices[2].m_position.y = edge2.y;
+    currentFaces[j].m_vertices[2].m_position.z = edge2.z;
+    j++;
+
+    currentFaces[j].m_vertices[0].m_position.x = edge2.x;
+    currentFaces[j].m_vertices[0].m_position.y = edge2.y;
+    currentFaces[j].m_vertices[0].m_position.z = edge2.z;
+    currentFaces[j].m_vertices[1].m_position.x = t0x2;
+    currentFaces[j].m_vertices[1].m_position.y = t0y2;
+    currentFaces[j].m_vertices[1].m_position.z = t0z2;
+    currentFaces[j].m_vertices[2].m_position.x = edge3.x;
+    currentFaces[j].m_vertices[2].m_position.y = edge3.y;
+    currentFaces[j].m_vertices[2].m_position.z = edge3.z;
+    j++;
+
+    currentFaces[j].m_vertices[0].m_position.x = edge1.x;
+    currentFaces[j].m_vertices[0].m_position.y = edge1.y;
+    currentFaces[j].m_vertices[0].m_position.z = edge1.z;
+    currentFaces[j].m_vertices[1].m_position.x = edge2.x;
+    currentFaces[j].m_vertices[1].m_position.y = edge2.y;
+    currentFaces[j].m_vertices[1].m_position.z = edge2.z;
+    currentFaces[j].m_vertices[2].m_position.x = edge3.x;
+    currentFaces[j].m_vertices[2].m_position.y = edge3.y;
+    currentFaces[j].m_vertices[2].m_position.z = edge3.z;
+    j++;
+    
+    index += 3;
+  }
+
+  Icosahedron_CreateIndexBuffer(79);
 }
 
 void GeneratePalette()
@@ -60,7 +155,7 @@ void GeneratePalette()
     u8 g1 = i;
     u8 b1 = i;
 
-    int t = 128;// (time >> 9) & 255;
+    int t = 128;
 
     u8 r = lerp(r0, r1, t);
     u8 g = lerp(g0, g1, t);
@@ -88,15 +183,8 @@ void Icosahedron_Init()
     ((unsigned short*)0x5000000)[i] = color;
   }
 
-  Icosahedron_Generate(0);
+  Icosahedron_Subdivide(0);
 
-  currentModel.m_faces = &currentFaces[0];
-  for (i = 0; i < 19; i++)
-  {
-    currentFaces[i].m_next = &currentFaces[i+1];
-  }
-  
-  currentModel.m_faces[19].m_next = 0;
   currentModel.m_rotation.x = 0;
   currentModel.m_rotation.y = 0;
   currentModel.m_rotation.z = 0;
@@ -107,8 +195,6 @@ void Icosahedron_Init()
   currentModel.m_flags = MODEL_BACKFACECULLING | MODEL_SORTFACES;// | MODEL_ENVMAPPED;  
 
   SetTexture((u8*)tex_litsphereBitmap, 0);
-
-  //BloomEffect_Init();
 }
 
 void Icosahedron_Destroy()
@@ -128,7 +214,6 @@ void Icosahedron_Update(uint time)
 
   FastSet16(g_currentBuffer, (1<<8)|(1), (SCREENWIDTH*SCREENHEIGHT)>>1); 
 
-  //currentModel.m_position.x = SinLUT[time & 255] >> 4;
   currentModel.m_position.y = 0;
   currentModel.m_rotation.x = -time>>1;
   currentModel.m_rotation.y = -time;
@@ -146,14 +231,12 @@ void Icosahedron_Update(uint time)
     u16 g = (color >> 5) & 31;
     u16 b = color & 31;    
 
-    //r = min(31, r >> tt);
     g = min(31, g >> tt);
     b = min(31, b >> tt);
 
     ((unsigned short*)0x5000200)[i] = (r << 10) | (g << 5) | b;
   }
 
-  //BloomEffect_Update(time);  
 }
 
 void Icosahedron_VCount()
