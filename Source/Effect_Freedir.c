@@ -4,7 +4,10 @@
 #include "Effect_Freedir.h"
 
 #define PLANES
-//#define PRECISION
+//#define SPHERE
+#define PRECISION
+
+#define tab 45
 
 int u, v, z;
 
@@ -19,7 +22,7 @@ extern const unsigned short bahnhof3Tiles[2048];
 extern const unsigned short bahnhof4Tiles[2048];
 extern const unsigned short bahnhof1Pal[256];
 
-u16 EWRAM_DATA uvtable[20 * 15];
+u8 uvtable[20 * 15 * 3];
 u8 EWRAM_DATA shadingtable[20 * 15];
 
 void Freedir_Init()
@@ -40,7 +43,7 @@ void Freedir_Init()
     ((unsigned short*)0x5000000)[i] = (r << 10) | (r << 5) | g;
   }  
 
-  OAM_Overlay(bahnhof1Pal, bahnhof1Tiles, bahnhof2Tiles, bahnhof3Tiles, bahnhof4Tiles);
+  //OAM_Overlay(bahnhof1Pal, bahnhof1Tiles, bahnhof2Tiles, bahnhof3Tiles, bahnhof4Tiles);
 }
 
 void Freedir_VCount()
@@ -91,6 +94,7 @@ void IWRAM_CODE Freedir_Update(uint time)
     Matrix3x3 m;
 
     Rotate(m, time>>1, 64 + ((time-300)), time>>2);
+    //Rotate(m, time>>3, 0, time>>4);
  
     u16 *target32 = g_currentBuffer;
 
@@ -101,20 +105,24 @@ void IWRAM_CODE Freedir_Update(uint time)
     int dx, dy, dz;
     int nx, ny, nz;
 
-    int ix, iz, t, ilen, color;
+    int ix, iz, iy, t, ilen, color;
 
     u8 *tex = (u8*)metalBitmap;
-    const int tab = 15;
-
+    
 #ifdef PLANES   
         ox = 0;//time<<1;//(SinLUT[((time >> 1) + 64)&255]) >> 1;
-        oy = 0;//(SinLUT[(time >> 1)&255]) >> 1;
-        oz = 0;//(SinLUT[((time >> 1))&255]) >> 1;                    
+        oy = 0;//(SinLUT[(time >> 1)&255]) << 4;
+        oz = 0;//time>>1;//(SinLUT[((time >> 1))&255]) >> 1;                    
 #endif            
 #ifdef TUNNEL
         ox = -128;
         oy = 128;
         oz = 0;//time << 10;    
+#endif
+#ifdef SPHERE
+        ox = -128;
+        oy = 128;
+        oz = 0;//time << 10;      
 #endif
 
     j = 0;
@@ -150,7 +158,6 @@ void IWRAM_CODE Freedir_Update(uint time)
             dz = (nz * ilen) >> 8;
 
 #ifdef PLANES
-
             if (dy == 0)
                 t = 65535;
             else        
@@ -167,9 +174,9 @@ void IWRAM_CODE Freedir_Update(uint time)
             int b = 2 * (ox * dx + oy * dy);
             int c = ox * ox + oy * oy - 256 * 256;
 
-            int delta = b * b - 4 * a * c;
-            int t1 = _div((-b + _sqrt(delta)) << 8, 2 * a);
-            int t2 = _div((-b - _sqrt(delta)) << 8, 2 * a);
+            int delta = _sqrt(b * b - 4 * a * c);
+            int t1 = _div((-b + delta) << 8, 2 * a);
+            int t2 = _div((-b - delta) << 8, 2 * a);
 
             t = min(t1, t2);                
 
@@ -181,8 +188,26 @@ void IWRAM_CODE Freedir_Update(uint time)
 
             u = (int)(abs(iz));
             v = (int)((abs((int)(_atan2(iy, ix)))) >> 6);
+#endif
+#ifdef SPHERE
+            int a = dx * dx + dy * dy + dz * dz;
+            int b = 2 * (ox * dx + oy * dy + oz * dz);
+            int c = ox * ox + oy * oy + oz * oz - 256 * 256;
 
-     
+            int delta = _sqrt(b * b - 4 * a * c);
+            int t1 = _div((-b + delta) << 8, 2 * a);
+            int t2 = _div((-b - delta) << 8, 2 * a);
+
+            t = min(t1, t2);                
+
+            ix = ox + (dx * t) >> 8;
+            iy = oy + (dy * t) >> 8;
+            iz = oz + (dz * t) >> 8;
+
+            u = (iy * iy + iz * iz) >> 8;
+            v = (int)((abs((int)(_atan2(iz, ix)))) >> 6);
+
+            t = 1;//t = t1;//1 << 6;
 #endif
             uv = ((v << 8) + u); // remove sanity check when building
             t >>= 6;
@@ -193,12 +218,12 @@ void IWRAM_CODE Freedir_Update(uint time)
         */    
             t = min(t, 7);
 
-            shadingtable[offset] = (t << 5);            
+            //shadingtable[offset] = (t << 5);            
 
-            u16 uvt = uv;
-            uvtable[offset] = uvt;
+            uvtable[offset++] = u;
+            uvtable[offset++] = v;
+            uvtable[offset++] = t << 5;
 
-            offset++;
             voffset++;
             i += 8;
         } while (i < 120);
@@ -210,34 +235,37 @@ void IWRAM_CODE Freedir_Update(uint time)
     int s1, t1, s2, t2, texofs = 0;
 
     offset = 0, y = 0;
-    int tablepos = 0;
     int ymul = 0;
     int du1, du2, dv1, dv2, eu1, eu2, d1, d2, d3, d4, zdu1, zdu2;
     int tempu1, tempu2, tempv1, tempv2, tempz1, tempz2 ,z1, z2, z, vz1;
 
-   for (j = 1; j < 20-1; j++)
+    u8 *uvs = (u8*)uvtable;
+
+   for (j = 1; j < 19; j++)
     {
-        for (i = 1; i < 15-1; i++)
+        for (i = 1; i < 15; i++) 
         {   
-            uv = uvtable[tablepos + i];
-            u1 = (uv >> 8) & 0xFF;
-            v1 = uv & 0xFF;
-            d1 = shadingtable[tablepos + i];
+            u1 = *uvs++;
+            v1 = *uvs++;
+            d1 = *uvs++;
 
-            uv = uvtable[tablepos + i + 1];
-            u2 = (uv >> 8) & 0xFF;
-            v2 = uv & 0xFF;
-            d2 = shadingtable[tablepos + i + 1];
+            u2 = *uvs++;
+            v2 = *uvs++;
+            d2 = *uvs++;
 
-            uv = uvtable[tablepos + i + tab];
-            u3 = (uv >> 8) & 0xFF;
-            v3 = uv & 0xFF;
-            d3 = shadingtable[tablepos + i + tab];
+            uvs += tab - 6;
 
-            uv = uvtable[tablepos + i + tab + 1];  
-            u4 = (uv >> 8) & 0xFF;
-            v4 = uv & 0xFF;
-            d4 = shadingtable[tablepos + i + tab + 1];
+            u3 = *uvs++;
+            v3 = *uvs++;
+            d3 = *uvs++;
+
+            u4 = *uvs++;
+            v4 = *uvs++;
+            d4 = *uvs++;
+
+            uvs -= tab;
+            uvs -= 3;
+
 #ifdef PRECISION
             du1 = (((u2 - u1) << 16) >> 3);
             du2 = (((u4 - u3) << 16) >> 3);
@@ -253,12 +281,24 @@ void IWRAM_CODE Freedir_Update(uint time)
             zdu2 = (((d4 - d3)) >> 3);
 
             ymul = (((j << 3)) * 120) + (i << 3);
-            for (y = 0; y < 8; y+=2)
+            for (y = 0; y < 8; y += 2)
             {
-                tempu1 = tempu2 = tempv1 = tempv2 = 0;
-                tempz1 = tempz2 = 0;
+                tempu1 = tempu2 = tempv1 = tempv2 = tempz1 = tempz2 = 0;
                 {     
-                            
+#ifdef PRECISION
+                    #define PLOT(add) \
+                    { \  
+                      tempu1 += du1; tempu2 += du2; s1 = u1 + (tempu1 >> 16); s2 = u3 + (tempu2 >> 16); \
+                      tempv1 += dv1; tempv2 += dv2; t1 = v1 + (tempv1 >> 16); t2 = v3 + (tempv2 >> 16); \
+                      tempz1 += zdu1; tempz2 += zdu2; z1 = d1 + (tempz1 >> 16); z2 = d3 + (tempz2 >> 16);\
+                      vz1 = (((z2 - z1) << 16) >> 3); \
+                      eu1 = (((s2 - s1) << 16) >> 3); eu2 = (((t2 - t1) << 16) >> 3); \
+                      u = (s1 + ((eu1 * y) >> 16)); v = (t1 + ((eu2 * y) >> 16)); z = z1 + ((vz1 * y) >> 16) >> 5; \  
+                      offset = ymul + add; \   
+                      texofs = ((v << 7) + u) & 0x3FFF; color = tex[texofs] - 224 + (z << 5); target32[offset] = (color << 8) | color; \       
+                      target32[offset + 120] = (color << 8) | color; \     
+                    }   
+#else                        
                     #define PLOT(add) \
                     { \  
                     tempu1 += du1; tempu2 += du2; s1 = u1 + (tempu1); s2 = u3 + (tempu2); \
@@ -271,20 +311,8 @@ void IWRAM_CODE Freedir_Update(uint time)
                     texofs = ((v << 7) + u) & 0x3FFF; color = tex[texofs] - 224 + (z << 5); target32[offset] = (color << 8) | color; \  
                     target32[offset + 120] = (color << 8) | color; \        
                     }                                                               
-               
-/* 
-                    #define PLOT(add) \
-                    { \  
-                      tempu1 += du1; tempu2 += du2; s1 = u1 + (tempu1 >> 16); s2 = u3 + (tempu2 >> 16); \
-                      tempv1 += dv1; tempv2 += dv2; t1 = v1 + (tempv1 >> 16); t2 = v3 + (tempv2 >> 16); \
-                      tempz1 += zdu1; tempz2 += zdu2; z1 = d1 + (tempz1); z2 = d3 + (tempz2);\
-                      vz1 = (((z2 - z1)) >> 3); \
-                      eu1 = (((s2 - s1) << 16) >> 3); eu2 = (((t2 - t1) << 16) >> 3); \
-                      u = (s1 + ((eu1 * y) >> 16)); v = (t1 + ((eu2 * y) >> 16)); z = z1 + ((vz1 * y) >> 16) >> 5; \  
-                      offset = ymul + add; \   
-                      texofs = ((v << 7) + u) & 0x3FFF; color = tex[texofs] - 224 + (z << 5); target32[offset] = (color << 8) | color; \       
-                    }   
-*/
+#endif
+
                     PLOT(0)
                     PLOT(1)
                     PLOT(2)
@@ -297,10 +325,10 @@ void IWRAM_CODE Freedir_Update(uint time)
                 ymul += 240;
             } 
         }
-        tablepos += tab;
+        uvs += 3;
     }   
-
-  u8 tt = 3 - ((-time >> 3) & 3);
+/*
+  u8 tt = 0;//3 - ((-time >> 3) & 3);
 
   for (int i = 0; i < 255; i++)
   {
@@ -316,7 +344,7 @@ void IWRAM_CODE Freedir_Update(uint time)
 
     ((unsigned short*)0x5000200)[i] = (r << 10) | (g << 5) | b;
   }
-
+*/
       //Post_Contrast((unsigned short*)0x5000200, bahnhof1Pal, max(tt, 2));
 }
 
