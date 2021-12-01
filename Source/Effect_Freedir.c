@@ -4,6 +4,7 @@
 #include "Effect_Freedir.h"
 
 #define PLANES
+//#define TUNNEL
 //#define SPHERE
 #define PRECISION
 
@@ -126,19 +127,12 @@ void IWRAM_CODE Freedir_Update(uint time)
 #endif
 
     j = 0;
-    //for (j = 0; j < 160; j+=8)
+  
     do 
     {
         i = 0;
-        //for (i = 0; i < 120; i+=8)
         do
-        {    
-/*   
-    for (j = 0; j < 160/2; j++)
-    {
-        for (i = 0; i < 120; i++)
-        {   
-  */                                      
+        {                                        
             dx = (((i<<1) - 120) << 8) >> 7;
             dy = ((j - 80) << 8) >> 7;
             dz = 1 << 8;
@@ -168,6 +162,8 @@ void IWRAM_CODE Freedir_Update(uint time)
 
             u = (int)(abs(ix)<<1) + 64;
             v = (int)(abs(iz)<<1) + 64;
+
+            t >>= 6;
 #endif            
 #ifdef TUNNEL
             int a = dx * dx + dy * dy;
@@ -180,7 +176,7 @@ void IWRAM_CODE Freedir_Update(uint time)
 
             t = min(t1, t2);                
 
-            ;//t = t1;//1 << 6;
+            //t = t1;//1 << 6;
 
             ix = ox + (dx * t) >> 8;
             iy = oy + (dy * t) >> 8;
@@ -188,6 +184,8 @@ void IWRAM_CODE Freedir_Update(uint time)
 
             u = (int)(abs(iz));
             v = (int)((abs((int)(_atan2(iy, ix)))) >> 6);
+
+            t = abs(max(t1, t2)) >> 7;
 #endif
 #ifdef SPHERE
             int a = dx * dx + dy * dy + dz * dz;
@@ -207,18 +205,9 @@ void IWRAM_CODE Freedir_Update(uint time)
             u = (iy * iy + iz * iz) >> 8;
             v = (int)((abs((int)(_atan2(iz, ix)))) >> 6);
 
-            t = 1;//t = t1;//1 << 6;
+            t = 1;
 #endif
-            uv = ((v << 8) + u); // remove sanity check when building
-            t >>= 6;
-       /* 
-            t *= t;
-            t >>= 1;
-            t += 1;
-        */    
             t = min(t, 7);
-
-            //shadingtable[offset] = (t << 5);            
 
             uvtable[offset++] = u;
             uvtable[offset++] = v;
@@ -271,14 +260,18 @@ void IWRAM_CODE Freedir_Update(uint time)
             du2 = (((u4 - u3) << 16) >> 3);
             dv1 = (((v2 - v1) << 16) >> 3);
             dv2 = (((v4 - v3) << 16) >> 3);
+
+            zdu1 = (((d2 - d1) << 16) >> 3);
+            zdu2 = (((d4 - d3) << 16) >> 3);
 #else
             du1 = (((u2 - u1)) >> 3);
             du2 = (((u4 - u3)) >> 3);
             dv1 = (((v2 - v1)) >> 3);
             dv2 = (((v4 - v3)) >> 3);
-#endif
+
             zdu1 = (((d2 - d1)) >> 3);
             zdu2 = (((d4 - d3)) >> 3);
+#endif
 
             ymul = (((j << 3)) * 120) + (i << 3);
             for (y = 0; y < 8; y += 2)
@@ -327,24 +320,5 @@ void IWRAM_CODE Freedir_Update(uint time)
         }
         uvs += 3;
     }   
-/*
-  u8 tt = 0;//3 - ((-time >> 3) & 3);
-
-  for (int i = 0; i < 255; i++)
-  {
-    u16 color = bahnhof1Pal[i];
-
-    u16 r = (color >> 10) & 31;
-    u16 g = (color >> 5) & 31;
-    u16 b = color & 31;    
-
-    r = min(31, r >> tt);
-    g = min(31, g >> tt);
-    b = min(31, b >> tt);
-
-    ((unsigned short*)0x5000200)[i] = (r << 10) | (g << 5) | b;
-  }
-*/
-      //Post_Contrast((unsigned short*)0x5000200, bahnhof1Pal, max(tt, 2));
 }
 
