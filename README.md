@@ -6,6 +6,9 @@ Bahnhof-05 is an upcoming Gameboy Advance demo for which I'm prototyping feature
 # Icosahedron
 <img src="https://github.com/nkeetels/Bahnhof-05/blob/main/Screenshots/effect_icosahedron.png" width="30%" height="30%"></img>
 
+# Bloom
+<img src="https://github.com/nkeetels/Bahnhof-05/blob/main/Screenshots/effect_bloom.png" width="30%" height="30%"></img>
+
 # Free direction planes
 <img src="https://github.com/nkeetels/Bahnhof-05/blob/main/Screenshots/effect_raytracing.png" width="30%" height="30%"></img>
 
