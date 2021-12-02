@@ -1,11 +1,3 @@
-// Button Bashers Secret Santa 2019 Gameboy Advance demo source code
-// 
-// File: Effect_Movetale.c
-// Description: the movetable effect is essentially a texture-coordinate rotation effect. Inputs are a 128 x 128 
-//              8-bit indexed color texture, a pre-generated 320 x 256 (tunnel) lookup table, offsets for scrolling 
-//              through the lookup table and a (time) index that gets added to the texture-coordinates in order to 
-//              create the appearance of a moving camera.
-
 #include "KDEngine.h"
 #include "KDPostProcessing.h"
 #include "Effect_Movetable.h"
@@ -18,6 +10,9 @@ extern unsigned char metal_palette[512];
 extern const unsigned short tunnellut3[];
 extern signed short lut_kusma[]; 
 
+extern const unsigned short lut_metro[];
+extern const unsigned short lut_sphere[];
+
 extern const unsigned short metalBitmap[8192];
 extern const unsigned short metalPal[256];
 
@@ -27,11 +22,15 @@ extern const unsigned short bahnhof3Tiles[2048];
 extern const unsigned short bahnhof4Tiles[2048];
 extern const unsigned short bahnhof1Pal[256];
 
+extern const unsigned short solar_lTiles[2048];
+extern const unsigned short solar_rTiles[2048];
+extern const unsigned short solar_lPal[2048];
+
 IWRAM_CODE void MoveTable(u8 *texture, s16 *table, int xoffset, int yoffset, int t)
 {
-	u32 *target = (u32*)(g_currentBuffer);
+	u32 *target = (u32*)(g_currentBuffer + 16*120);
 	s16 *uv = (yoffset * 320) + xoffset + (table - 1);
-	int i = 0, j = 0;	
+	int i = 0, j = 0;
 
 	#define PLOT \
 	{ \
@@ -40,7 +39,7 @@ IWRAM_CODE void MoveTable(u8 *texture, s16 *table, int xoffset, int yoffset, int
 		*target++=(texture[((*(++uv))+t)&TEXSIZE]) | (texture[((*(++uv))+t)&TEXSIZE]<<8) | (texture[((*(++uv))+t)&TEXSIZE]<<16 | (texture[((*(++uv))+t)&TEXSIZE]<<24)); \     
 		*target++=(texture[((*(++uv))+t)&TEXSIZE]) | (texture[((*(++uv))+t)&TEXSIZE]<<8) | (texture[((*(++uv))+t)&TEXSIZE]<<16 | (texture[((*(++uv))+t)&TEXSIZE]<<24)); \     
 	}
-	const int endline = 160 - 40;
+	const int endline = 160-19;
 	const int line = 320 - 240;
   do
 	{
@@ -62,8 +61,11 @@ void MovetableEffect_Init()
 
 	REG_BLDCNT = 0x00FF; 
 	OAM_Clear();
-	OAM_SetSprite(0, 120-64, 60-32, 64, 1, 0, gfx_solarTiles, gfx_solarPal);
-//	OAM_SetSprite(1, 120-60, 60-28, 64, 1, 0, gfx_solarTiles, gfx_solarPal);
+//	OAM_SetSprite(0, 0, 32, 64, 1, 0, gfx_solarTiles, gfx_solarPal);
+
+	OAM_SetSprite(1, 120-32, 80-32, 64, 0, 0, solar_lTiles, solar_lPal);
+	OAM_SetSprite(2, 120+32, 80-32, 64, 0, 0, solar_rTiles, solar_lPal);
+
   OAM_SetBlendMode(ALPHA_BLEND, BLEND(16,16));
   OAM_CopySprites();
 
@@ -78,7 +80,7 @@ void MovetableEffect_Init()
 
     r = min(31, (r * r * v) >> 3);
     g = min(31, (g * g * v) >> 3);
-    b = min(31, (b * b * v) >> 3);
+    b = min(31, (b * b * v) >> 3)<<2;
 
     ((unsigned short*)0x5000000)[i] = (r << 10) | (r << 5) | g;
   }  
@@ -92,10 +94,10 @@ void MovetableEffect_Init()
 
 void MovetableEffect_Destroy()
 {
-		OAM_Clear();
-		OAM_CopySprites();
+	OAM_Clear();
+	OAM_CopySprites();
 
-		REG_BLDY = 16;
+	REG_BLDY = 16;
 
 	REG_BG2PA = 256;
   REG_BG2PB = 0;
@@ -112,20 +114,25 @@ void MovetableEffect_Update(uint time)
 	OAM_RotateSprite(0, time, 200, 200);
 	OAM_CopySprites();
 
-  int x = 40 + (SinLUT[((time >> 1) + 64) & LUTSIZE] >> 3);
-  int y = 60 + (SinLUT[(time) & LUTSIZE] >> 3);
+  int x = (SinLUT[((time >> 1) + 64) & LUTSIZE] >> 1);
+  int y = (SinLUT[(time) & LUTSIZE] >> 1);
 
-	int t = (time<<1) & LUTSIZE;
+	time &= 255;
 
-  MoveTable(metalBitmap, lut_kusma, x, y, -t);
+	time <<= 1;
+	int t = ((time << 8) | time) & 0x7fff;
 
+  MoveTable(metalBitmap, lut_sphere, 40, 80, -t>>1);
 }
 
 
 void MovetableEffect_VCount()
 {
-    u16 scanline = REG_VCOUNT << 4;
-    REG_BG2PD = 255-124 + ((SinLUT[((-scanlineCounter >> 9) + ((160 * 2 - scanline) >> 4)) & 255]) >> 1);
+    //u16 scanline = REG_VCOUNT << 4;
+    //REG_BG2PD = 255-124 + ((SinLUT[((-scanlineCounter >> 9) + ((160 * 2 - scanline) >> 4)) & 255]) >> 1);
 
-		VCount_Vignette();
+		u16 scanline = min(REG_VCOUNT, 159);
+
+		REG_BLDCNT |= 0x00FF | ((0x0010) & 63);
+    REG_BLDY = 16 - (60 + ((scanline - 80)) >> 3);
 }
