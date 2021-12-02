@@ -10,7 +10,7 @@ Bahnhof-05 is an upcoming Gameboy Advance demo for which I'm prototyping feature
 <img src="https://github.com/nkeetels/Bahnhof-05/blob/main/Screenshots/effect_raytracing.png" width="30%" height="30%"></img>
 
 # Movetable
-<img src="https://github.com/nkeetels/Bahnhof-05/blob/main/Screenshots/effect_movetable.png" width="30%" height="30%"></img>
+<img src="https://github.com/nkeetels/Bahnhof-05/blob/main/Screenshots/effect_movetable2.png" width="30%" height="30%"></img>
 
 # Greetings
 <img src="https://github.com/nkeetels/Bahnhof-05/blob/main/Screenshots/effect_greetings.png" width="30%" height="30%"></img>
