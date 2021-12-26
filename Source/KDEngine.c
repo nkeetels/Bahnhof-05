@@ -25,6 +25,12 @@ KDFace transformedFaces[MAX_FACES];
 u16 drawOrder[MAX_FACES];
 u16 depthBuffer[MAX_FACES];
 
+s16 clipInput[6][2];
+s16 clipOutput[6][2];
+
+int debugValue = 0;
+
+
 extern unsigned char phong_lut[16384];
 
 void swap_vertex(KDVertex *a, KDVertex *b)
@@ -45,10 +51,25 @@ void SetBumpMap(u8 *bumpmap)
     g_currentBumpMap = bumpmap;
 }
 
+
+void PutPixel(int x, int y, u8 color)
+{
+   u16 *target = (u16*)g_currentBuffer + ((y * 240 + x) >> 1);
+
+   if (x & 1)
+   {
+      *target = (*target & 0xFF) | (color << 8);
+   }
+   else
+   {
+      *target = (*target & ~0xFF) | color;
+   }
+}
+
 void IWRAM_CODE HLine(int x1, int x2, int y, u16 color)
 {
-  x1 = max(0, x1);
-  x2 = min(238, x2);
+  x1 = max(1, x1);
+  x2 = min(237, x2);
 
   u8 *vscreen = (u8*)((u32)g_currentBuffer + x1 + y * SCREENWIDTH);
 
@@ -94,7 +115,7 @@ void IWRAM_CODE flatTriangle(KDFace *face, u16 color)
     _swap(y3, y2);
   }
 
-  if (y3 == y1 || y3 <= 0 || y1 >= 160)
+  if (y3 == y1)
     return;
 
   int deltaAC = _div((x3 - x1) << 16, y3 - y1);
@@ -279,7 +300,11 @@ void IWRAM_CODE TextureTriangle(KDFace *face, u8 *texture, u8 *bumpmap, u8 shade
   b1 = v1 + (dy * dvAB);
   dv = _div(((b1 - b0) << 8), length) >> 8;
 
-	u16 *line;
+  // to do: fix HS clipping
+  x0 = max(0, x0);
+  x1 = max(0, x1);
+
+  u16 *line;
   
   int stride, n, y, tu, tv, ts, tt;
 
@@ -288,11 +313,7 @@ void IWRAM_CODE TextureTriangle(KDFace *face, u8 *texture, u8 *bumpmap, u8 shade
     line = (u16*)(g_currentBuffer + 120 * y0);
 
     y = y1 - y0;
-/*
-    // hack
-    if (y + y0 >= 158)
-      return;
-*/
+
     u16 tc;
 
     do 
@@ -395,11 +416,6 @@ void IWRAM_CODE TextureTriangle(KDFace *face, u8 *texture, u8 *bumpmap, u8 shade
   line = (u16*)(g_currentBuffer + 120 * y1);
 
   y = y2 - y1;
-/*
-  // hack
-  if (y + y1 >= 158)
-   return;  
-*/
 
   u16 tc;
 
@@ -446,6 +462,93 @@ void IWRAM_CODE TextureTriangle(KDFace *face, u8 *texture, u8 *bumpmap, u8 shade
     line += 120;
 
   } while (--y);
+}
+
+void AALine(int x0, int y0, int x1, int y1, u8 color)
+{
+  u16 *target = (u16*)g_currentBuffer;
+
+  if (y0 > y1) 
+  {
+    _swap(x0, x1);
+    _swap(y0, y1);
+  }
+
+  int dx = x1 - x0;
+  int dy = y1 - y0;
+
+  int gradient = dx < 0 ? -1 : 1;
+  dx *= gradient;
+
+  PutPixel(x0, y0, color);
+
+  if (dy == 0) 
+  {
+    while (dx--) PutPixel(x0 += gradient, y0, color);
+    return;
+  }
+
+  if (dx == 0) 
+  { 
+    while (dy--) PutPixel(x0, y0++, color);
+    return;
+  }
+
+  if (dx == dy) 
+  {
+    while (dy--) PutPixel(x0 += gradient, y0++, color);
+    return;
+  }
+  
+  u16 currentError;
+  u16 error = 0;
+  u16 intensity = 0;
+   
+  if (dy > dx) 
+  {
+    u16 fract = _div(dx << 16, dy);
+
+    while (--dy) 
+    {
+      currentError = error;   
+      x0 += ((error += fract) <= currentError) ? gradient : 0;
+
+      intensity = error >> 8;
+
+      PutPixel(x0, ++y0, color + intensity);
+      PutPixel(x0 + gradient, y0, color + (intensity ^ 255));
+    }
+  }
+  else
+  {
+    u16 fract = _div(dy << 16, dx);
+
+    while (--dx) 
+    {
+      currentError = error; 
+      y0 += ((error += fract) <= currentError) ? 1 : 0;
+
+      intensity = error >> 8;
+
+      PutPixel(x0 += gradient, y0, color + intensity);
+      PutPixel(x0, y0 + 1, color + (intensity ^ 255));
+    }
+  }
+  PutPixel(x1, y1, color);
+}
+
+void wireTriangle(KDFace *face, u16 color)
+{
+  s16 x1 = face->m_vertices[0].m_position.x;
+  s16 y1 = face->m_vertices[0].m_position.y;
+  s16 x2 = face->m_vertices[1].m_position.x;
+  s16 y2 = face->m_vertices[1].m_position.y;
+  s16 x3 = face->m_vertices[2].m_position.x;
+  s16 y3 = face->m_vertices[2].m_position.y;
+
+  AALine(x1, y1, x2, y2, color);
+  AALine(x1, y1, x3, y3, color);
+  AALine(x2, y2, x3, y3, color);
 }
 
 void SwapFace(KDFace *a, KDFace * b)
@@ -495,10 +598,53 @@ void IWRAM_CODE QuickSort(u16 *list, u16 start, u16 end)
   }
 } 
 
+void TransformLocalToWorldProjection(KDModel *model, KDVertex *v, Matrix3x3 m)
+{    
+  // rotate
+  int nx = (m[0][0] * v->m_position.x + m[0][1] * v->m_position.y + m[0][2] * v->m_position.z) >> 8;
+  int ny = (m[1][0] * v->m_position.x + m[1][1] * v->m_position.y + m[1][2] * v->m_position.z) >> 8;
+  int nz = (m[2][0] * v->m_position.x + m[2][1] * v->m_position.y + m[2][2] * v->m_position.z) >> 8;
+
+  v->m_position.x = nx;
+  v->m_position.y = ny;
+  v->m_position.z = nz;
+
+#if 1
+  // Pseudo-normal approximation looks good enough for convex object
+  nx = (nx) + 64;//(_div(nx << 8, len)) + 63;
+  ny = (ny >> 1) + 32;//(_div(nx << 8, len)) + 63;
+#else
+  nx = (nx >> 1) + 64;//(_div(nx << 8, len)) + 63;
+  ny = (ny >> 2) + 32;//(_div(nx << 8, len)) + 63;
+#endif
+
+  v->s = nx;
+  v->t = ny;
+
+  // Translate
+  v->m_position.x += model->m_position.x;
+  v->m_position.y += model->m_position.y;
+  v->m_position.z += model->m_position.z;
+
+  // Project
+  
+  v->m_position.x = _div(v->m_position.x << 7, v->m_position.z - 64);
+  v->m_position.y = _div(v->m_position.y << 7, v->m_position.z - 64);
+  
+     // v->m_position.x = ((v->m_position.x * (v->m_position.z + 256)) >> 8);
+      //v->m_position.y = ((v->m_position.y * (v->m_position.z + 256)) >> 8);
+}
+
+void TransformToScreenSpace(KDVertex *v)
+{
+  v->m_position.x += HALFWIDTH;
+  v->m_position.y += HALFHEIGHT;
+}
+
 #define LUTSIZE 255
 void Render(KDModel *model)
 {
-  int i, nx, ny, nz, normal;
+  int i, normal;
 
   Matrix3x3 m;
   Rotate(m, model->m_rotation.x, model->m_rotation.y, model->m_rotation.z);
@@ -510,50 +656,9 @@ void Render(KDModel *model)
     KDFace face;
     for (i = 0; i < 3; i++)
     {
-      face.m_vertices[i].m_position.x = idx->m_vertices[i].m_position.x;
-      face.m_vertices[i].m_position.y = idx->m_vertices[i].m_position.y;
-      face.m_vertices[i].m_position.z = idx->m_vertices[i].m_position.z;
-    }
+     face.m_vertices[i] = idx->m_vertices[i];
 
-    // rotate
-    for (i = 0; i < 3; i ++)    
-    { 
-      nx = (m[0][0] * face.m_vertices[i].m_position.x + m[0][1] * face.m_vertices[i].m_position.y + m[0][2] * face.m_vertices[i].m_position.z) >> 8;
-      ny = (m[1][0] * face.m_vertices[i].m_position.x + m[1][1] * face.m_vertices[i].m_position.y + m[1][2] * face.m_vertices[i].m_position.z) >> 8;
-      nz = (m[2][0] * face.m_vertices[i].m_position.x + m[2][1] * face.m_vertices[i].m_position.y + m[2][2] * face.m_vertices[i].m_position.z) >> 8;
-
-      face.m_vertices[i].m_position.x = nx;
-      face.m_vertices[i].m_position.y = ny;
-      face.m_vertices[i].m_position.z = nz;
-
-
-#if 1
-      // Pseudo-normal approximation looks good enough for convex object
-      nx = (nx) + 64;//(_div(nx << 8, len)) + 63;
-      ny = (ny >> 1) + 32;//(_div(nx << 8, len)) + 63;
-
-#else
-      nx = (nx >> 1) + 64;//(_div(nx << 8, len)) + 63;
-      ny = (ny >> 2) + 32;//(_div(nx << 8, len)) + 63;
-#endif
-
-      face.m_vertices[i].s = nx;
-      face.m_vertices[i].t = ny;
-    }
-
-    // Translate
-    for (i = 0; i < 3; i++)
-    {
-      face.m_vertices[i].m_position.x += model->m_position.x;// + SinLUT[(model->m_blend + 4 * face.m_vertices[i].m_position.y) & 255] >> 4;
-      face.m_vertices[i].m_position.y += model->m_position.y;// + SinLUT[(model->m_blend + 6 * face.m_vertices[i].m_position.y) & 255] >> 4;
-      face.m_vertices[i].m_position.z += model->m_position.z;// + SinLUT[(model->m_blend + 4 * face.m_vertices[i].m_position.y) & 255] >> 4;
-    }
-
-    // Project
-    for (i = 0; i < 3; i++)
-    {
-      face.m_vertices[i].m_position.x = ((face.m_vertices[i].m_position.x * (face.m_vertices[i].m_position.z + 256)) >> 8);
-      face.m_vertices[i].m_position.y = ((face.m_vertices[i].m_position.y * (face.m_vertices[i].m_position.z + 256)) >> 8);
+     TransformLocalToWorldProjection(model, &face.m_vertices[i], &m);
     }
 
     // Calculate normal for culling and lighting
@@ -564,96 +669,107 @@ void Render(KDModel *model)
 
     face.m_normal = normal;
 
-    // Add visible faces to the list
-    if (model->m_flags & MODEL_BACKFACECULLING)
-    {     
-      if (normal > 0)
-      {           
-        transformedFaces[numFaces].m_normal = face.m_normal;
-
-        transformedFaces[numFaces].m_vertices[0].m_position.x = face.m_vertices[0].m_position.x + HALFWIDTH;
-        transformedFaces[numFaces].m_vertices[0].m_position.y = face.m_vertices[0].m_position.y + HALFHEIGHT;
-        transformedFaces[numFaces].m_vertices[1].m_position.x = face.m_vertices[1].m_position.x + HALFWIDTH;
-        transformedFaces[numFaces].m_vertices[1].m_position.y = face.m_vertices[1].m_position.y + HALFHEIGHT;
-        transformedFaces[numFaces].m_vertices[2].m_position.x = face.m_vertices[2].m_position.x + HALFWIDTH;
-        transformedFaces[numFaces].m_vertices[2].m_position.y = face.m_vertices[2].m_position.y + HALFHEIGHT;
-
-        transformedFaces[numFaces].m_vertices[0].u = idx->m_vertices[0].u;
-        transformedFaces[numFaces].m_vertices[0].v = idx->m_vertices[0].v;
-        transformedFaces[numFaces].m_vertices[1].u = idx->m_vertices[1].u;
-        transformedFaces[numFaces].m_vertices[1].v = idx->m_vertices[1].v;
-        transformedFaces[numFaces].m_vertices[2].u = idx->m_vertices[2].u;
-        transformedFaces[numFaces].m_vertices[2].v = idx->m_vertices[2].v;        
-        transformedFaces[numFaces].m_vertices[0].s = face.m_vertices[0].s;
-        transformedFaces[numFaces].m_vertices[0].t = face.m_vertices[0].t;
-        transformedFaces[numFaces].m_vertices[1].s = face.m_vertices[1].s;
-        transformedFaces[numFaces].m_vertices[1].t = face.m_vertices[1].t;
-        transformedFaces[numFaces].m_vertices[2].s = face.m_vertices[2].s;
-        transformedFaces[numFaces].m_vertices[2].t = face.m_vertices[2].t;       
-
-        if (model->m_flags & MODEL_ENVMAPPED)
-        {     
-          transformedFaces[numFaces].m_vertices[0].u = face.m_vertices[0].s;
-          transformedFaces[numFaces].m_vertices[0].v = face.m_vertices[0].t;
-          transformedFaces[numFaces].m_vertices[1].u = face.m_vertices[1].s;
-          transformedFaces[numFaces].m_vertices[1].v = face.m_vertices[1].t;
-          transformedFaces[numFaces].m_vertices[2].u = face.m_vertices[2].s;
-          transformedFaces[numFaces].m_vertices[2].v = face.m_vertices[2].t; 
-        }        
-
-        transformedFaces[numFaces].m_next = NULL;        
-
-        // Calculate depth for sorting based on average Z
-        depthBuffer[numFaces] = face.m_vertices[0].m_position.z + face.m_vertices[1].m_position.z + face.m_vertices[2].m_position.z;
-        
-        numFaces++;
-      }
-    }
-    else
+    for (i = 0; i < 3; i++)
     {
-        transformedFaces[numFaces].m_normal = face.m_normal;
-
-        transformedFaces[numFaces].m_vertices[0].m_position.x = face.m_vertices[0].m_position.x + HALFWIDTH;
-        transformedFaces[numFaces].m_vertices[0].m_position.y = face.m_vertices[0].m_position.y + HALFHEIGHT;
-        transformedFaces[numFaces].m_vertices[1].m_position.x = face.m_vertices[1].m_position.x + HALFWIDTH;
-        transformedFaces[numFaces].m_vertices[1].m_position.y = face.m_vertices[1].m_position.y + HALFHEIGHT;
-        transformedFaces[numFaces].m_vertices[2].m_position.x = face.m_vertices[2].m_position.x + HALFWIDTH;
-        transformedFaces[numFaces].m_vertices[2].m_position.y = face.m_vertices[2].m_position.y + HALFHEIGHT;
-
-        transformedFaces[numFaces].m_vertices[0].u = idx->m_vertices[0].u;
-        transformedFaces[numFaces].m_vertices[0].v = idx->m_vertices[0].v;
-        transformedFaces[numFaces].m_vertices[1].u = idx->m_vertices[1].u;
-        transformedFaces[numFaces].m_vertices[1].v = idx->m_vertices[1].v;
-        transformedFaces[numFaces].m_vertices[2].u = idx->m_vertices[2].u;
-        transformedFaces[numFaces].m_vertices[2].v = idx->m_vertices[2].v;        
-        transformedFaces[numFaces].m_vertices[0].s = face.m_vertices[0].s;
-        transformedFaces[numFaces].m_vertices[0].t = face.m_vertices[0].t;
-        transformedFaces[numFaces].m_vertices[1].s = face.m_vertices[1].s;
-        transformedFaces[numFaces].m_vertices[1].t = face.m_vertices[1].t;
-        transformedFaces[numFaces].m_vertices[2].s = face.m_vertices[2].s;
-        transformedFaces[numFaces].m_vertices[2].t = face.m_vertices[2].t; 
-
-        if (model->m_flags & MODEL_ENVMAPPED)
-        {     
-          transformedFaces[numFaces].m_vertices[0].u = face.m_vertices[0].s;
-          transformedFaces[numFaces].m_vertices[0].v = face.m_vertices[0].t;
-          transformedFaces[numFaces].m_vertices[1].u = face.m_vertices[1].s;
-          transformedFaces[numFaces].m_vertices[1].v = face.m_vertices[1].t;
-          transformedFaces[numFaces].m_vertices[2].u = face.m_vertices[2].s;
-          transformedFaces[numFaces].m_vertices[2].v = face.m_vertices[2].t; 
-        }
-
-        transformedFaces[numFaces].m_next = NULL;        
-
-        // Calculate depth for sorting based on average Z
-        depthBuffer[numFaces] = face.m_vertices[0].m_position.z + face.m_vertices[1].m_position.z + face.m_vertices[2].m_position.z;
-        
-        numFaces++;      
+      TransformToScreenSpace(&face.m_vertices[i]);
     }
-    
-    idx = idx->m_next;
-  }
 
+   if (model->m_flags & MODEL_ENVMAPPED)
+   {   
+      for (i = 0; i < 3; i++)
+      {
+         face.m_vertices[i].u = idx->m_vertices[i].s;      
+         face.m_vertices[i].v = idx->m_vertices[i].t;
+      }
+   }
+   else 
+   for (i = 0; i < 3; i++)
+   {
+      face.m_vertices[i].u = idx->m_vertices[i].u;      
+      face.m_vertices[i].v = idx->m_vertices[i].v;
+   }
+
+    bool off_screen = 
+      (((face.m_vertices[0].m_position.y < 0) &&            (face.m_vertices[1].m_position.y < 0) &&              (face.m_vertices[2].m_position.y < 0)) ||
+	    ((face.m_vertices[0].m_position.y > SCREENHEIGHT) && (face.m_vertices[1].m_position.y > SCREENHEIGHT) &&   (face.m_vertices[2].m_position.y > SCREENHEIGHT)) ||
+	    ((face.m_vertices[0].m_position.x < 0) &&            (face.m_vertices[1].m_position.x < 0) &&              (face.m_vertices[2].m_position.x < 0)) ||
+	    ((face.m_vertices[0].m_position.x > SCREENWIDTH) &&  (face.m_vertices[1].m_position.x > SCREENWIDTH) &&    (face.m_vertices[2].m_position.x > SCREENWIDTH)));
+
+    if (off_screen == false)
+    {
+/*
+      clipInput[0][0] = face.m_vertices[0].m_position.x;
+      clipInput[0][1] = face.m_vertices[0].m_position.y;
+      clipInput[1][0] = face.m_vertices[1].m_position.x;
+      clipInput[1][1] = face.m_vertices[1].m_position.y;
+      clipInput[2][0] = face.m_vertices[2].m_position.x;
+      clipInput[2][1] = face.m_vertices[2].m_position.y;
+
+      int numVertices = 3;
+      numVertices = ClipTop(numVertices, 0);
+      numVertices = ClipLeft(numVertices, 0);
+      numVertices = ClipBottom(numVertices, SCREENHEIGHT);
+      numVertices = ClipRight(numVertices, SCREENWIDTH);
+
+      debugValue = 0;
+
+      switch (numVertices)
+      {
+         case 4: // insert 2 pre-transformed triangles in transformedFaces array
+
+            //numFaces++;
+            //debugValue = 62;
+            break;
+         case 5:
+           // debugValue = 122;
+            //numFaces += 2;
+            break;
+         case 6:
+            //debugValue = 190;
+            //numFaces += 3;
+            break;
+
+         default:
+            face.m_vertices[0].m_position.x = clipInput[0][0];
+            face.m_vertices[0].m_position.y = clipInput[0][1];
+            face.m_vertices[1].m_position.x = clipInput[1][0];
+            face.m_vertices[1].m_position.y = clipInput[1][1];
+            face.m_vertices[2].m_position.x = clipInput[2][0];
+            face.m_vertices[2].m_position.y = clipInput[2][1];
+            break;
+      }
+*/
+      // Add visible faces to the list
+      if (model->m_flags & MODEL_BACKFACECULLING)
+      {     
+         if (normal > 0)
+         {           
+            transformedFaces[numFaces] = face;
+
+            transformedFaces[numFaces].m_next = NULL;    // Redundant?    
+
+            // Calculate depth for sorting based on average Z
+            depthBuffer[numFaces] = face.m_vertices[0].m_position.z + face.m_vertices[1].m_position.z + face.m_vertices[2].m_position.z;
+            
+            numFaces++;
+         }
+      }
+      else
+      {
+         transformedFaces[numFaces] = face;
+
+         transformedFaces[numFaces].m_next = NULL;         // Redundant?
+
+         // Calculate depth for sorting based on average Z
+         depthBuffer[numFaces] = face.m_vertices[0].m_position.z + face.m_vertices[1].m_position.z + face.m_vertices[2].m_position.z;
+         
+         numFaces++;      
+      }
+      
+      idx = idx->m_next;
+   }
+  }
+  
   // Index triangles
   for (i = 0; i < numFaces; i++)
     drawOrder[i] = i;
@@ -683,14 +799,20 @@ void Render(KDModel *model)
 
       TextureTriangle(&transformedFaces[faceIndex], g_currentTexture, g_currentBumpMap, 0);      
     }
+    else if (model->m_flags & MODEL_WIREFRAME)
+    {
+      wireTriangle(&transformedFaces[faceIndex], 0);
+    }
     else
     {
       normal = transformedFaces[faceIndex].m_normal >> 2;
     //  normal = depthBuffer[i] >> 3;
       int shade = (((normal >> 2) + depthBuffer[i]) >> 2);
       shade *= shade;
-
       shade >>= currentModel.m_blend;
+
+     // if (debugValue > 0) shade = debugValue;
+
      // if (shade < 64 + (SinLUT[64 + model->m_blend] >> 8));
       flatTriangle(&transformedFaces[faceIndex], /*128-normal*/shade);
     }

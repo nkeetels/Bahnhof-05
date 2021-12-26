@@ -11,6 +11,7 @@
 #include "KDMath.h"
 #include "KDOam.h"
 #include "KDVideo.h"
+#include "KDClipping.h"
 
 #define TEXSIZE 0x3fff
 
@@ -33,6 +34,7 @@ typedef struct Face
 #define MODEL_SORTFACES 1 << 2
 #define MODEL_BACKFACECULLING 1 << 3
 #define MODEL_ENVMAPPED 1 << 4
+#define MODEL_WIREFRAME 1 << 5
 
 typedef struct Model
 {
@@ -56,5 +58,11 @@ void SetTexture(u8 *texture, u8 palette_offset);
 void SetBumpMap(u8 *bumpmap);
 
 void HLine(int x1, int x2, int y, u16 color);
+void AALine(int x0, int y0, int x1, int y1, u8 color);
+void flatTriangle(KDFace *face, u16 color);
+void wireTriangle(KDFace *face, u16 color);
+
+void TransformLocalToWorldProjection(KDModel *model, KDVertex *v, Matrix3x3 m);
+void TransformToScreenSpace(KDVertex *v);
 
 #endif//__KDENGINE_H
