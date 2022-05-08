@@ -40,9 +40,6 @@ void RotatePalette(uint time)
 
 }
 
-#define MOS_BUILD(bh, bv, oh, ov)		\
-	( (((ov)&15)<<12) | (((oh)&15)<<8) | (((bv)&15)<<4)| ((bh)&15) )
-
 void Kaleido_Init()
 {
   REG_DISPCNT = 0x1444;
@@ -112,7 +109,7 @@ void UpdateKaleidoscope(KDModel *model, KDFace f[], int sides, int time)
     f[i].m_vertices[1].m_position.z = 0;
 
 			
-		step = (float)sides / (i + 1);
+    step = (float)sides / (i + 1);
     f[i].m_vertices[2].m_position.x = SinLUT[(int)(64 + (LUTSIZE+1) / step) & LUTSIZE] >> 2;
     f[i].m_vertices[2].m_position.y = (2 * SinLUT[(int)((LUTSIZE+1) / step) & LUTSIZE]) >> 3;
     f[i].m_vertices[2].m_position.z = 0;
